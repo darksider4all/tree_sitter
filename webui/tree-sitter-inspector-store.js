@@ -8,6 +8,8 @@ export const store = createStore("treeSitterInspector", {
   query: "",
   loading: false,
   reindexing: false,
+  installing: false,
+  depsNeeded: false,
   error: "",
   inspection: null,
   indexStatus: null,
@@ -16,9 +18,37 @@ export const store = createStore("treeSitterInspector", {
     this.error = "";
     this.inspection = null;
     this.indexStatus = null;
+    this.checkDeps();
   },
 
   cleanup() {},
+
+
+  async checkDeps() {
+    try {
+      await api.callJsonApi("/plugins/tree_sitter/index_status", {
+        root_path: "/tmp",
+      });
+      this.depsNeeded = false;
+    } catch (error) {
+      const msg = error.message || String(error);
+      this.depsNeeded = msg.includes("tree-sitter-language-pack");
+    }
+  },
+
+  async installDeps() {
+    this.installing = true;
+    this.error = "";
+    try {
+      await api.callJsonApi("/plugins/tree_sitter/install_deps", {});
+      this.depsNeeded = false;
+    } catch (error) {
+      this.error = error.message || String(error);
+    } finally {
+      this.installing = false;
+    }
+  },
+
 
   async inspectFile() {
     if (!this.filePath) {

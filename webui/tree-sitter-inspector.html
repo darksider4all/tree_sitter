@@ -34,6 +34,16 @@
                     </button>
                 </div>
 
+                <div class="panel error" x-show="$store.treeSitterInspector.depsNeeded">
+                    <strong>Missing Dependency</strong>
+                    <p>Tree-sitter support requires the <code>tree-sitter-language-pack</code> package.</p>
+                    <button class="btn btn-primary" @click="$store.treeSitterInspector.installDeps()"
+                        :disabled="$store.treeSitterInspector.installing">
+                        <span x-show="!$store.treeSitterInspector.installing">Install Dependencies</span>
+                        <span x-show="$store.treeSitterInspector.installing">Installing...</span>
+                    </button>
+                </div>
+
                 <div class="panel controls">
                     <h2>Repo Index</h2>
                     <label class="field">

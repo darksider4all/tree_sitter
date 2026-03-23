@@ -1,6 +1,31 @@
-<div x-data>
+<div x-data="{ installing: false, depsInstalled: false, depsError: '' }">
     <template x-if="config">
         <div class="plugin-settings-cards">
+            <section class="card plugin-card" x-show="!depsInstalled">
+                <h3>Dependencies</h3>
+                <p>Tree-sitter requires the <code>tree-sitter-language-pack</code> Python package.</p>
+                <div class="actions">
+                    <button class="btn btn-primary" :disabled="installing"
+                        @click="
+                            installing = true; depsError = '';
+                            const { callJsonApi } = await import('/js/api.js');
+                            try {
+                                await callJsonApi('/plugins/tree_sitter/install_deps', {});
+                                depsInstalled = true;
+                            } catch (e) { depsError = e.message || String(e); }
+                            finally { installing = false; }
+                        ">
+                        <span x-show="!installing">Install Dependencies</span>
+                        <span x-show="installing">Installing...</span>
+                    </button>
+                </div>
+                <p class="error-text" x-show="depsError" x-text="depsError"></p>
+            </section>
+            <section class="card plugin-card" x-show="depsInstalled">
+                <h3>Dependencies</h3>
+                <p>tree-sitter-language-pack installed successfully.</p>
+            </section>
+
             <section class="card plugin-card">
                 <h3>Inspection Limits</h3>
 
@@ -70,6 +95,14 @@
             .checkbox-field {
                 grid-template-columns: auto 1fr;
                 align-items: center;
+            }
+            .actions {
+                display: flex;
+                gap: 0.75rem;
+            }
+            .error-text {
+                color: var(--color-error, #e74c3c);
+                margin: 0;
             }
         </style>
     </template>
