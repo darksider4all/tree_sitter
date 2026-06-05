@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import fnmatch
 import hashlib
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,59 @@ from .runtime_support import (
 
 PLUGIN_NAME = "tree_sitter"
 INDEX_ROOT = files.get_abs_path("usr/plugins/tree_sitter/data/indexes")
+
+# Directories always excluded from indexing (generated/vendor content)
+_DEFAULT_IGNORE_DIRS: frozenset[str] = frozenset({
+    "node_modules", "__pycache__", ".git", "venv", ".venv", "env",
+    "dist", "build", ".next", ".nuxt", ".cache", ".tox",
+    ".mypy_cache", ".pytest_cache", ".sass-cache", "target",
+    ".idea", ".vscode", "coverage", ".coverage",
+})
+
+
+def _load_gitignore_patterns(root: Path) -> list[str]:
+    """Read .gitignore from root and return simplified patterns."""
+    gitignore = root / ".gitignore"
+    if not gitignore.is_file():
+        return []
+    patterns: list[str] = []
+    for line in gitignore.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        patterns.append(line)
+    return patterns
+
+
+def _should_ignore_path(
+    rel_path: Path,
+    *,
+    gitignore_patterns: list[str],
+    index_hidden_files: bool,
+) -> bool:
+    """Check if a path should be excluded from indexing."""
+    parts = rel_path.parts
+    # Skip hidden files/dirs unless explicitly enabled
+    if not index_hidden_files and any(p.startswith(".") for p in parts):
+        return True
+    # Skip known generated/vendor directories
+    if any(p in _DEFAULT_IGNORE_DIRS for p in parts):
+        return True
+    # Check .gitignore patterns (directory-level and file-level)
+    rel_str = str(rel_path).replace("\\", "/")
+    for pattern in gitignore_patterns:
+        # Directory pattern (trailing slash or pattern without dots/slashes)
+        clean = pattern.rstrip("/")
+        # Match against any path component
+        if clean in parts:
+            return True
+        # Match against full relative path
+        if fnmatch.fnmatch(rel_str, pattern) or fnmatch.fnmatch(rel_str, pattern.lstrip("/")):
+            return True
+        # Match against filename only
+        if fnmatch.fnmatch(rel_path.name, pattern):
+            return True
+    return False
 
 
 def get_config(agent=None) -> dict[str, Any]:
@@ -184,6 +238,8 @@ def build_index(
     if not root.is_dir():
         raise FileNotFoundError(f"Index root not found: {root}")
 
+    gitignore_patterns = _load_gitignore_patterns(root)
+
     records: list[dict[str, Any]] = []
     indexed_files = 0
     for file_path in root.rglob("*"):
@@ -191,7 +247,12 @@ def build_index(
             break
         if not file_path.is_file():
             continue
-        if not cfg["index_hidden_files"] and any(part.startswith(".") for part in file_path.relative_to(root).parts):
+        rel_path = file_path.relative_to(root)
+        if _should_ignore_path(
+            rel_path,
+            gitignore_patterns=gitignore_patterns,
+            index_hidden_files=cfg["index_hidden_files"],
+        ):
             continue
         language = detect_language_from_path(file_path)
         if not language:
